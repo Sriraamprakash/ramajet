@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ask Raam</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+  <div class="container">
+
+    <div id="content">
+      <header>
+       
+        <h1>Ask me raam</h1>
+      </header>
+
+      <main>
+        <form id="chatForm">
+          <div class="prompt-box">
+            <label>
+              <input name="prompt" placeholder="Ask me raam!" type="text">
+            </label>
+            <button type="submit">Go</button>
+            <button id="voiceInput" type="button">🎤 Speak</button>
+          </div>
+        </form>
+        <p class="output">(Results will appear here)</p>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/markdown-it@8.4.2/dist/markdown-it.min.js"></script>
+  <script src="https://unpkg.com/base64-js@1.3.0/base64js.min.js"></script>
+  <script type="module" src="/main.js"></script>
+</body>
+
+<script type="module">
+  import { streamGemini } from './gemini-api.js';
+
+  let form = document.querySelector('form');
+  let promptInput = document.querySelector('input[name="prompt"]');
+  let output = document.querySelector('.output');
+  let voiceInputButton = document.getElementById('voiceInput');
+
+  // Handle form submission
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    output.textContent = 'Generating...';
+
+    try {
+      let userPrompt = promptInput.value.trim().toLowerCase();
+
+      // Special responses for certain names
+      if (userPrompt.includes('ashwin')) {
+        output.textContent = 'Ashwin is the project owner, overseeing all aspects of this chatbot.';
+        speakResponse(output.textContent);
+      } else if (userPrompt.includes('meeravathi')) {
+        output.textContent = 'Meeravathi is an important part of this project, contributing to its design and development.';
+        speakResponse(output.textContent);
+      } else if (userPrompt.includes('sriraam')) {
+        output.textContent = 'Sriraam is another key contributor, helping bring this chatbot to life.';
+        speakResponse(output.textContent);
+      } else {
+        // Assemble the prompt for Gemini
+        let contents = [
+          {
+            role: 'user',
+            parts: [
+              { text: promptInput.value }
+            ]
+          }
+        ];
+
+        // Call the multimodal model, and get a stream of results
+        let stream = streamGemini({
+          model: 'gemini-1.5-flash', // or gemini-1.5-pro
+          contents,
+        });
+
+        // Read from the stream and interpret the output as markdown
+        let buffer = [];
+        let md = new markdownit();
+        for await (let chunk of stream) {
+          buffer.push(chunk);
+          let renderedText = md.render(buffer.join(''));
+          output.innerHTML = renderedText;
+          speakResponse(renderedText);
+        }
+      }
+    } catch (e) {
+      output.innerHTML += '<hr>' + e;
+    }
+  };
+
+  // Handle voice input
+  voiceInputButton.onclick = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.start();
+
+    recognition.onresult = (event) => {
+      const voiceInput = event.results[0][0].transcript;
+      promptInput.value = voiceInput;
+      form.dispatchEvent(new Event('submit')); // Trigger form submission
+    };
+
+    recognition.onerror = (event) => {
+      output.textContent = 'Error occurred in recognition: ' + event.error;
+    };
+  };
+
+  // Function to speak the response
+  function speakResponse(htmlText) {
+    try {
+      // Cancel any ongoing speech before starting a new one
+      speechSynthesis.cancel();
+
+      // Create a temporary element to hold the HTML
+      const tempElement = document.createElement('div');
+      tempElement.innerHTML = htmlText;
+
+      // Extract text content without HTML tags
+      const cleanText = tempElement.textContent || tempElement.innerText || '';
+
+      // Create and configure the utterance
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = 'en-US';
+
+      // Speak the utterance using the default voice
+      speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.error('Speech synthesis failed:', e);
+    }
+  }
+</script>
+
+
+</html>
