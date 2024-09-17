@@ -1,0 +1,172 @@
+import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
+import MarkdownIt from 'markdown-it';
+
+// Replace with your actual API key
+const API_KEY = 'AIzaSyCkGdwPpQNEZpWEZzDGK1-vd7NqRohbMhw';
+
+const form = document.querySelector('.input-box');
+const promptInput = form.querySelector('input[name="prompt"]');
+const outputContainer = document.querySelector('.output-container');
+const initialGreetingForm = document.querySelector('.initial-greeting form');
+
+// Handle initial greeting form submission
+initialGreetingForm.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const username = document.querySelector('input[name="username"]').value.trim();
+  if (username) {
+    localStorage.setItem('username', username);
+    document.querySelector('.initial-greeting').style.display = 'none';
+    showPersonalizedGreeting(username);
+  }
+});
+
+// Show personalized greeting
+function showPersonalizedGreeting(username) {
+  const timeGreeting = getTimeOfDayGreeting();
+  const greetingMessage = `${timeGreeting}, ${username}! How can I assist you today?`;
+  const greetingContainer = document.createElement('div');
+  greetingContainer.className = 'response-message-container';
+  greetingContainer.innerHTML = `<p>${greetingMessage}</p>`;
+  outputContainer.appendChild(greetingContainer);
+}
+
+// Get time of day greeting
+function getTimeOfDayGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+// Handle form submission
+form.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  
+  const userPrompt = promptInput.value.trim();
+  if (!userPrompt) return;
+
+  const username = localStorage.getItem('username') || 'User';
+
+  // Display user message
+  const userMessage = document.createElement('div');
+  userMessage.className = 'user-message-container';
+  userMessage.innerHTML = `
+    <img src="USER.jpeg" alt="User">
+    <strong>${username}:</strong>
+    <p>${userPrompt}</p>
+  `;
+  outputContainer.appendChild(userMessage);
+  outputContainer.scrollTop = outputContainer.scrollHeight;
+
+  // Display AI response with typing indicator
+  const responseMessage = document.createElement('div');
+  responseMessage.className = 'response-message-container';
+  responseMessage.innerHTML = `
+    <img src="AIIS.jpeg" alt="AI">
+    <strong>LSE:</strong>
+    <p><div class="typing-indicator"></div></p>
+  `;
+  outputContainer.appendChild(responseMessage);
+  outputContainer.scrollTop = outputContainer.scrollHeight;
+
+  promptInput.value = '';
+
+  try {
+    let botResponse = '';
+
+    // Determine bot response based on user prompt
+    if (userPrompt.toLowerCase().includes('ashwin')) {
+      botResponse = 'Ashwin is the project owner, overseeing all aspects of this chatbot.';
+    } else if (userPrompt.toLowerCase().includes('meeravathi')) {
+      botResponse = 'Meeravathi is an important part of this project, contributing to its design and development.';
+    } else if (userPrompt.toLowerCase().includes('sriraam')) {
+      botResponse = 'Sriraam is another key contributor, helping bring this chatbot to life.';
+    } else {
+      // Generate bot response using Google Generative AI
+      const genAI = new GoogleGenerativeAI(API_KEY);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        safetySettings: [
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+          },
+        ],
+      });
+
+      const contents = [{ role: 'user', parts: [{ text: userPrompt }] }];
+      const stream = await model.generateContentStream({ contents });
+
+      const md = new MarkdownIt();
+      const buffer = [];
+      for await (const chunk of stream.stream) {
+        buffer.push(chunk.text());
+        botResponse = md.render(buffer.join(''));
+      }
+    }
+
+    // Update response message with bot response
+    setTimeout(() => {
+      responseMessage.querySelector('p').innerHTML = botResponse;
+      speakResponse(botResponse);
+      outputContainer.scrollTop = outputContainer.scrollHeight;
+    }, 2000); // 2-second delay
+
+  } catch (e) {
+    responseMessage.querySelector('p').innerHTML = `<hr>Error: ${e.message}`;
+  }
+});
+
+// Function to speak the response
+function speakResponse(htmlText) {
+  try {
+    speechSynthesis.cancel();
+    const tempElement = document.createElement('div');
+    tempElement.innerHTML = htmlText;
+    const cleanText = tempElement.textContent || tempElement.innerText || '';
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = 'en-US';
+    speechSynthesis.speak(utterance);
+    utterance.onend = promptUserInput;
+  } catch (e) {
+    console.error('Speech synthesis failed:', e);
+  }
+}
+
+// Function to prompt the user for voice input after AI finishes speaking
+function promptUserInput() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.error('Speech recognition not supported');
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.start();
+
+  recognition.onresult = (event) => {
+    const voiceInput = event.results[0][0].transcript;
+    promptInput.value = voiceInput;
+    form.dispatchEvent(new Event('submit'));
+  };
+
+  recognition.onspeechend = () => {
+    recognition.stop();
+  };
+}
+
+// Handle navigation between sections
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const targetId = e.target.getAttribute('href').substring(1);
+    document.querySelectorAll('.main-content > div').forEach(div => {
+      div.style.display = 'none';
+    });
+    document.getElementById(targetId).style.display = 'block';
+  });
+});
